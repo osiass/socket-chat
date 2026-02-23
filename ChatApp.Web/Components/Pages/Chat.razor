@@ -1,0 +1,122 @@
+﻿@page "/chat"
+@using ChatApp.Web.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Components.Web
+@using ChatApp.Web.Data
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+@inject UserSession UserSession
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+<PageTitle>Sohbet Odası</PageTitle>
+
+<div class="container border p-3 rounded shadow-sm" style="max-width: 600px; height: 500px; display: flex; flex-direction: column;">
+    <div class="flex-grow-1 overflow-auto mb-3" id="messageList">
+        @foreach (var msg in messages)
+        {
+            <div class="mb-2">
+                <strong>@msg.User:</strong> @msg.Text
+                <hr class="m-0" />
+            </div>
+        }
+    </div>
+
+    <div class="input-group">
+        <input @bind="userInput" class="form-control" placeholder="Mesajınız..." @onkeyup="HandleKeyUp" />
+        <button class="btn btn-primary" @onclick="Send" disabled="@(!IsConnected)">Gönder</button>
+    </div>
+</div>
+
+@code {
+    private HubConnection? hubConnection;// tcpClientin yerini tutar
+    private List<ChatMessage> messages = new();//mesaj listesi
+    private string? userInput;
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            //  Veritabanından eski mesajları çek
+            var oldMessages = await DbContext.Messages
+                .Include(m => m.User) 
+                .OrderByDescending(m => m.SentAt)
+                .Take(50) // Son 50 mesaj
+                .ToListAsync();
+
+            // ters çevirerek ekle
+            foreach (var m in oldMessages.OrderBy(m => m.SentAt))
+            {
+                messages.Add(new ChatMessage { User = m.User?.Username, Text = m.Content });
+            }
+
+            StateHasChanged(); // Ekranda göster
+
+            
+        }
+        if (firstRender)//sadece ilk renderda çalış
+        {
+            if (!UserSession.IsLoggedIn)
+            {
+                Navigation.NavigateTo("/");
+                return;
+            }
+
+
+
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/chathub"))//tcpdeki ip porttan sonra gelen adres gibi
+                .WithAutomaticReconnect()
+                .Build();
+
+            // serverdan mesaj geldiğinde tetiklenecek olay
+            hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+            {
+                messages.Add(new ChatMessage { User = user, Text = message });
+                InvokeAsync(StateHasChanged); // Sayfayı yenile 
+            });
+
+            // bağlantıyı başlat
+            try
+            {
+                await hubConnection.StartAsync();
+                StateHasChanged(); // butonun aktifleşmesi için ekranı bir kez daha tazele
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Bağlantı hatası: {ex.Message}");
+            }
+
+        }
+    }
+
+    private async Task Send()
+    {
+        if (hubConnection is not null && hubConnection.State == HubConnectionState.Connected && !string.IsNullOrEmpty(userInput))
+        {
+            // serverdaki chatHub içindeki sendmessage metodunu çağırıyoruz
+            await hubConnection.SendAsync("SendMessage", UserSession.Username, userInput);
+            userInput = "";
+
+        }
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Send();
+    }
+
+    public bool IsConnected => hubConnection?.State == HubConnectionState.Connected;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null) await hubConnection.DisposeAsync();
+    }
+
+    private class ChatMessage
+    {
+        public string? User { get; set; }
+        public string? Text { get; set; }
+    }
+}

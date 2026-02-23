@@ -1,0 +1,52 @@
+﻿@page "/register"
+@using ChatApp.Web.Services
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Kayıt Ol</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4 card p-4 shadow">
+            <h3 class="text-center">Kayıt Ol</h3>
+
+            <div class="mb-3">
+                <label>Kullanıcı Adı</label>
+                <input class="form-control" @bind="username" placeholder="Kullanıcı adınızı girin" />
+            </div>
+
+            <div class="mb-3">
+                <label>Şifre</label>
+                <input type="password" class="form-control" @bind="password" placeholder="Şifrenizi girin" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+
+            <button class="btn btn-primary w-100" @onclick="HandleRegister">Kayıt Ol</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string username = "";
+    private string password = "";
+    private string errorMessage = "";
+
+    private async Task HandleRegister()
+    {
+        bool result = await AuthService.RegisterUserAsync(username, password);
+
+        if (result)
+        {
+            
+            Navigation.NavigateTo("/");
+        }
+        else
+        {
+            errorMessage = "Bu kullanıcı adı zaten alınmış!";
+        }
+    }
+}
