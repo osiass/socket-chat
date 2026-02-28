@@ -2,7 +2,7 @@
 {
     public class UserSession
     {
-        // giriş yapan kullanıcının adı
+        public int UserId { get; set; } // Bunu ekledik
         public string? Username { get; set; }
 
         // kullanıcı giriş yaptı mı yapmadı mı kontrolü

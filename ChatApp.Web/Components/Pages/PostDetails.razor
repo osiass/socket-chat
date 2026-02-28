@@ -1,0 +1,129 @@
+﻿<h3>PostDetails</h3>
+
+@code {
+
+}
+@*urlden gelen id*@
+@page "/post/{PostId:int}"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@inject PostService PostService
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<div class="container mt-4" style="max-width: 700px;">
+    @* Geri Dön Butonu *@
+    <button class="btn btn-link text-dark p-0 mb-3 text-decoration-none" @onclick="GoBack">
+        <i class="bi bi-arrow-left fs-4"></i> Geri Dön
+    </button>
+
+    @if (post == null)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Gönderi yükleniyor...</p>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow border-0 overflow-hidden" style="border-radius: 15px;">
+            @*KULLANICI BİLGİSİ *@
+            <div class="p-3 d-flex align-items-center border-bottom bg-white">
+                <a href="/profile/@post.UserId">
+                    <img src="@(string.IsNullOrEmpty(post.User?.ProfilePictureUrl) ? "https://cdn-icons-png.flaticon.com/512/149/149071.png" : $"/profile-images/{post.User.ProfilePictureUrl}")"
+                         class="rounded-circle border" style="width: 45px; height: 45px; object-fit: cover;" />
+                </a>
+                <div class="ms-3">
+                    <h6 class="mb-0 fw-bold">@post.User?.Username</h6>
+                    <small class="text-muted">@post.CreatedAt.ToLocalTime().ToString("g")</small>
+                </div>
+            </div>
+
+            @* BÜYÜK RESİM *@
+            @if (!string.IsNullOrEmpty(post.ImageUrl))
+            {
+                <div class="bg-black d-flex align-items-center justify-content-center" style="min-height: 400px;">
+                    <img src="/uploads/@post.ImageUrl" class="img-fluid" style="max-height: 600px;" />
+                </div>
+            }
+
+            @* İÇERİK*@
+            <div class="p-3 bg-white">
+                <p class="fs-5">@post.Content</p>
+
+                <div class="d-flex align-items-center gap-4 my-3">
+                    <div @onclick="HandleLike" style="cursor:pointer;" class="d-flex align-items-center gap-1">
+                        <i class="bi @(post.Likes.Any(l => l.UserId == UserSession.UserId) ? "bi-heart-fill text-danger" : "bi-heart") fs-4"></i>
+                        <span class="fw-bold">@post.Likes.Count Beğeni</span>
+                    </div>
+                    <div class="text-secondary d-flex align-items-center gap-1">
+                        <i class="bi bi-chat fs-4"></i>
+                        <span class="fw-bold">@post.Comments.Count Yorum</span>
+                    </div>
+                </div>
+
+                <hr class="opacity-25" />
+
+                @*YORUMLAR LİSTESİ*@
+                <div class="mt-3">
+                    <h6 class="fw-bold mb-3">Yorumlar</h6>
+                    @foreach (var comment in post.Comments.OrderBy(c => c.CreatedAt))
+                    {
+                        <div class="d-flex mb-3">
+                            <img src="@(string.IsNullOrEmpty(comment.User?.ProfilePictureUrl) ? "https://cdn-icons-png.flaticon.com/512/149/149071.png" : $"/profile-images/{comment.User.ProfilePictureUrl}")"
+                                 class="rounded-circle" style="width: 30px; height: 30px; object-fit: cover;" />
+                            <div class="ms-2 bg-light p-2 rounded-3" style="flex: 1;">
+                                <span class="fw-bold d-block" style="font-size: 0.85rem;">@comment.User?.Username</span>
+                                <span style="font-size: 0.9rem;">@comment.Content</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @*YORUM YAZMA ALANI*@
+                <div class="mt-4 d-flex align-items-center bg-light rounded-pill px-3 py-2">
+                    <input type="text" class="form-control border-0 bg-transparent shadow-none"
+                           placeholder="Yorum ekle..." @bind="newCommentText" />
+                    <button class="btn btn-link text-primary fw-bold text-decoration-none" @onclick="SubmitComment">Paylaş</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int PostId { get; set; }
+    private Post? post;
+    private string newCommentText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPost();
+    }
+
+    private async Task LoadPost()
+    {
+        post = await PostService.GetPostByIdAsync(PostId);
+    }
+
+    private async Task HandleLike()
+    {
+        await PostService.ToggleLikeAsync(PostId, UserSession.UserId);
+        await LoadPost();
+    }
+
+    private async Task SubmitComment()
+    {
+        if (!string.IsNullOrWhiteSpace(newCommentText))
+        {
+            await PostService.AddCommentAsync(PostId, UserSession.UserId, newCommentText);
+            //input kutusunu boşalt
+            newCommentText = "";
+			//gönderiyi tekrar yükle hemen yorum gözüksün diye
+            await LoadPost();
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/feed");
+}

@@ -18,3 +18,18 @@ obj/
 # OS
 Thumbs.db
 .DS_Store
+
+# --- DATABASE (SQL Server LocalDB) ---
+*.mdf
+*.ldf
+
+# --- USER UPLOADS (Klasörler gitsin ama içindeki resimler gitmesin) ---
+ChatApp.Web/wwwroot/uploads/*
+!ChatApp.Web/wwwroot/uploads/.gitkeep
+
+ChatApp.Web/wwwroot/profile-images/*
+!ChatApp.Web/wwwroot/profile-images/.gitkeep
+
+# --- EXTRA ---
+*.exe
+*.dll

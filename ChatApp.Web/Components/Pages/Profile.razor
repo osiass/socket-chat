@@ -1,0 +1,118 @@
+﻿@page "/profile/{UserId:int}"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@inject PostService PostService
+@inject UserSession UserSession
+
+<div class="container mt-4" style="max-width: 600px;">
+    @if (user == null)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">Kullanıcı yükleniyor...</p>
+        </div>
+    }
+    else
+    {
+        @* Üst Bilgi Alanı *@
+        <div class="text-center mb-4">
+            @* profil resmi eğer yoksa bir ikon veya varsayılan resim *@
+            <div class="position-relative d-inline-block">
+                <img src="@(string.IsNullOrEmpty(user.ProfilePictureUrl) ? "https://cdn-icons-png.flaticon.com/512/149/149071.png" : $"/profile-images/{user.ProfilePictureUrl}")"
+                     class="rounded-circle shadow-sm border" style="width: 120px; height: 120px; object-fit: cover;" />
+            </div>
+
+            <h4 class="mt-3 fw-bold">@@@user.Username</h4>
+
+            @* biyografi alanı eğer içi doluysa kullanıcı adının altında gösterilir *@
+            @if (!string.IsNullOrEmpty(user.Bio))
+            {
+                <p class="text-muted mt-2 px-4" style="font-size: 0.95rem;">@user.Bio</p>
+            }
+
+            @* istatistikler *@
+            <div class="d-flex justify-content-center gap-4 mt-3">
+                <div class="text-center"><strong>@user.Posts.Count</strong> <br /> <small class="text-muted">Gönderi</small></div>
+                @*takipçi ve takip sayılarını Include ettiğimiz için artık yazabiliriz *@
+                <div class="text-center"><strong>@user.Followers.Count</strong> <br /> <small class="text-muted">Takipçi</small></div>
+                <div class="text-center"><strong>@user.Following.Count</strong> <br /> <small class="text-muted">Takip</small></div>
+                <div class="text-center"><strong>@user.Likes.Count</strong> <br /> <small class="text-muted">Beğeni</small></div>
+            </div>
+
+            @*takip et*@
+            @if (UserId != UserSession.UserId) //profil benim değilse butonu göster
+            {
+
+                bool isFollowing = user.Followers.Any(f => f.FollowerId == UserSession.UserId);
+
+                <button class="btn @(isFollowing ? "btn-outline-secondary" : "btn-primary") mt-3 px-5 rounded-pill fw-bold"
+                        @onclick="HandleFollow">
+                    @(isFollowing ? "Takibi Bırak" : "Takip Et")
+                </button>
+                @*MESAJ GÖNDER BUTONU *@
+                <a href="/directchat/@UserId" class="btn btn-outline-primary mt-3 px-4 rounded-pill ms-2 fw-bold">
+                    <i class="bi bi-chat-text"></i> Mesaj Gönder
+                </a>
+            }
+            else
+            {
+                <a href="/profile/edit" class="btn btn-outline-dark mt-3 px-4 rounded-pill fw-bold">
+                    <i class="bi bi-pencil-square"></i> Profili Düzenle
+                </a>
+            }
+        </div>
+
+        <hr class="my-4 opacity-25" />
+
+        @* Kullanıcının Postları  *@
+        <div class="row g-2">
+            @foreach (var post in user.Posts.OrderByDescending(p => p.CreatedAt))
+            {
+                @* Profile.razor içinde bul ve değiştir *@
+                <div class="col-4">
+                    <a href="/post/@post.Id" class="text-decoration-none">
+                        <div class="ratio ratio-1x1">
+                            @if (!string.IsNullOrEmpty(post.ImageUrl))
+                            {
+                                <img src="/uploads/@post.ImageUrl" class="img-fluid rounded object-fit-cover shadow-sm" alt="Post" />
+                            }
+                            else
+                            {
+                                <div class="bg-light d-flex align-items-center justify-content-center border rounded p-2 text-center text-dark">
+                                    <small style="font-size: 0.7rem;">@post.Content</small>
+                                </div>
+                            }
+                        </div>
+                    </a>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int UserId { get; set; }
+    private User? user;
+    //  OnInitializedAsync yerine bunu kullanıyoruz
+    // Kendi profilimden başkasının profiline geçersem sayfa yeniden oluşmaz
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadProfile();
+    }
+
+    private async Task LoadProfile()
+    {
+        user = await PostService.GetUserProfileAsync(UserId);
+    }
+
+    private async Task HandleFollow()
+    {
+        // Servisi çağır Takip et/bırak
+        bool success = await PostService.ToggleFollowAsync(UserSession.UserId, UserId);
+
+        if (success)
+        {
+            await LoadProfile();
+        }
+    }
+}

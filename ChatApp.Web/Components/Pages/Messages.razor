@@ -1,0 +1,72 @@
+﻿@page "/messages"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@inject ChatService ChatService
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Mesajlar - SocialApp</PageTitle>
+
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold text-primary">Sohbetler</h5>
+        </div>
+
+        @* mesaj listesi*@
+        <div class="list-group list-group-flush">
+            @if (chatUsers == null)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (!chatUsers.Any())
+            {
+                <div class="text-center p-5 text-muted">
+                    <i class="bi bi-chat-left-dots fs-1"></i>
+                    <p class="mt-2">Henüz kimseyle mesajlaşmadın.</p>
+                    <a href="/feed" class="btn btn-primary btn-sm rounded-pill">İnsanları Bul</a>
+                </div>
+            }
+            else
+            {
+                @foreach (var user in chatUsers)
+                {
+                    @* Her bir kullanıcı bir linke dönüşüyor *@
+                    <a href="/directchat/@user.Id" class="list-group-item list-group-item-action border-0 py-3 d-flex align-items-center">
+                        <div class="rounded-circle bg-light text-primary d-flex justify-content-center align-items-center fw-bold shadow-sm"
+                             style="width: 50px; height: 50px; font-size: 1.2rem;">
+                            @user.Username[0].ToString().ToUpper()
+                        </div>
+
+                        @* kullanıcı adı son mesaj önizlemesi *@
+                        <div class="ms-3">
+                            <h6 class="mb-0 fw-bold text-dark">@user.Username</h6>
+                            <small class="text-muted small">Mesajlaşmayı başlatmak için tıkla</small>
+                        </div>
+
+                        <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                    </a>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<User>? chatUsers;
+	// giriş yapmamışsa anasayfaya yönlendiriyoruz
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        // Backendden son mesajlaştığımız kişileri çekiyoruz
+        chatUsers = await ChatService.GetRecentChatAsync(UserSession.UserId);
+    }
+}

@@ -9,9 +9,11 @@ namespace ChatApp.Web.Services
     {
         private readonly AppDbContext _context;
         //dependency injection ile db alıyoruz, 
-        public AuthService(AppDbContext context)
+        private readonly UserSession _userSession;
+        public AuthService(AppDbContext context, UserSession userSession)
         {
             _context = context;
+            _userSession = userSession;
         }
         public async Task<bool> RegisterUserAsync(string username, string password)
         {
@@ -42,6 +44,9 @@ namespace ChatApp.Web.Services
             string enteredPasswordHash = HashPassword(password);
             if (user.PasswordHash == enteredPasswordHash)
             {
+                _userSession.UserId = user.Id;
+                _userSession.Username = user.Username;
+
                 return true;
             }
             else

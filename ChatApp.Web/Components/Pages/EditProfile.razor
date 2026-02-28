@@ -1,0 +1,129 @@
+﻿@page "/profile/edit"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject UserService UserService
+@inject PostService PostService
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-pencil-square me-2"></i>Profili Düzenle</h5>
+        </div>
+
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else
+            {
+                @*profil resmi seçimi*@
+                <div class="text-center mb-4">
+                    <img src="@previewUrl" class="rounded-circle shadow-sm border"
+                         style="width: 100px; height: 100px; object-fit: cover;" />
+                    <div class="mt-2">
+                        <label class="btn btn-sm btn-outline-primary rounded-pill">
+                            Fotoğraf Değiştir
+                            <InputFile OnChange="HandleFileSelected" class="d-none" />
+                        </label>
+                    </div>
+                </div>
+
+                @* kullanıcı adı*@
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">KULLANICI ADI</label>
+                    <input type="text" class="form-control bg-light border-0" @bind="username" />
+                </div>
+
+                @* bio *@
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">BİYOGRAFİ</label>
+                    <textarea class="form-control bg-light border-0" rows="3"
+                              placeholder="Kendinden bahset..." @bind="bio"></textarea>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary fw-bold py-2 rounded-pill"
+                            @onclick="HandleSave" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span>Kaydediliyor...</span>
+                        }
+                        else
+                        {
+
+                            <span>Değişiklikleri Kaydet</span>
+                        }
+                    </button>
+                    <a href="/profile/@UserSession.UserId" class="btn btn-link text-muted text-decoration-none">Vazgeç</a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string username = "";
+    private string bio = "";
+    private string previewUrl = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+
+    private byte[]? fileBytes;
+    private string? fileName;
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+
+	// Sayfa yüklendiğinde mevcut kullanıcı verilerini çekiyoruz override ediyoruzki ekrana yüklenmeden önce işlemi yapabilelim
+    protected override async Task OnInitializedAsync()
+    {
+        //Mevcut kullanıcı verilerini yükle
+        var user = await PostService.GetUserProfileAsync(UserSession.UserId);
+        if (user != null)
+        {
+            username = user.Username;
+            bio = user.Bio ?? "";
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                previewUrl = $"/profile-images/{user.ProfilePictureUrl}";
+            }
+        }
+        isLoading = false;
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null)
+        {
+            fileName = file.Name;
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(5 * 1024 * 1024).CopyToAsync(ms);
+            fileBytes = ms.ToArray();
+
+            // Seçilen resmi anında ekranda önizlemek için 
+            var format = "image/png";
+            previewUrl = $"data:{format};base64,{Convert.ToBase64String(fileBytes)}";
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        isSaving = true;
+
+        // Servisi çağırıp veritabanını güncelliyoruz
+        await UserService.UpdateProfileAsync(UserSession.UserId, username, bio, fileBytes, fileName);
+
+        // Güncelleme sonrası kullanıcı adını seans hafızasında da tazele
+        UserSession.Username = username;
+
+        // Profile geri dön
+        Navigation.NavigateTo($"/profile/{UserSession.UserId}");
+        isSaving = false;
+    }
+}

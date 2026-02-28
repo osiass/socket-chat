@@ -1,0 +1,324 @@
+﻿@page "/feed"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@using ChatApp.Web.Data
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.EntityFrameworkCore
+@inject PostService PostService// dependency injection ile postservice i kullanmak için ekledik normal c#ta constructor ile alırdık burda inject
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@inject IJSRuntime JS // JavaScript onay kutusunu kullanmak için ekledik  
+@rendermode @(new InteractiveServerRenderMode(prerender: false))// server interaktif çalışaacak demek false ise statik html olarak render edilmesin
+
+<PageTitle>Akış</PageTitle>
+
+<div class="container mt-4" style="max-width: 600px;">
+
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Bir şeyler paylaş...</h5>
+            <div class="mb-3">
+                <textarea class="form-control border-0 bg-light"
+                          rows="3"
+                          @bind="newPostContent"
+                          placeholder="Bugün neler oluyor?"></textarea>
+            </div><!--input değişirse değişken değişir değişken değişirse iinput güncellenir-->
+
+            <div class="d-flex justify-content-between align-items-center">
+
+                <div class="upload-btn-wrapper">
+                    <button class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-image"></i> Fotoğraf Ekle
+                    </button>
+                    <InputFile OnChange="HandleFileSelected" />
+                </div>
+
+                <button class="btn btn-primary px-4"
+                        @onclick="SubmitPost"
+                        disabled="@isUploading">
+                    @if (isUploading)
+                    {
+                        <span>Yükleniyor...</span>
+                    }
+                    else
+                    {
+
+                        <span>Paylaş</span>
+                    }
+                </button>
+            </div>
+
+            @if (selectedFileName != null)
+            {
+                <div class="mt-2 small text-success">
+                    <i class="bi bi-check-circle"></i> @selectedFileName seçildi.
+                </div>
+            }
+        </div>
+    </div>
+
+
+    @if (posts == null)
+    {
+        <div class="text-center">Yükleniyor...</div>
+    }
+    else
+    {
+        @foreach (var post in posts)
+        {
+            <div class="card shadow-sm mb-4 post-card">
+
+                <div class="card-header bg-white border-0 d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        @*Profil linki buraya eklendi *@
+                        <a href="/profile/@post.UserId" class="text-decoration-none">
+                            @if (!string.IsNullOrEmpty(post.User?.ProfilePictureUrl))
+                            {
+                                @*Kullanıcının gerçek profil resmi varsa onu göster *@
+                                <img src="/profile-images/@post.User.ProfilePictureUrl"
+                                     class="rounded-circle border shadow-sm"
+                                     style="width: 40px; height: 40px; object-fit: cover;" />
+                            }
+                            else
+                            {
+                                @*Resim yoksa eski sistem baş harfi göster *@
+                                <div class="rounded-circle bg-secondary text-white d-flex justify-content-center align-items-center shadow-sm"
+                                     style="width: 40px; height: 40px; font-weight: bold;">
+                                    @(string.IsNullOrEmpty(post.User?.Username) ? "U" : post.User.Username.Substring(0, 1).ToUpper())
+                                </div>
+                            }
+                        </a>
+                        <div class="ms-3">
+                            @*İsme tıklayınca profile gitme *@
+                            <h6 class="mb-0">
+                                <a href="/profile/@post.UserId" class="text-dark fw-bold text-decoration-none">
+                                    @post.User?.Username
+                                </a>
+                            </h6>
+                            <small class="text-muted">@post.CreatedAt.ToLocalTime().ToString("g")</small>
+                        </div>
+                    </div>
+
+                    @*Eğer postu paylaşan kişi ile giriş yapan kişi aynıysa çöp kutusu göster *@
+                    @if (post.UserId == UserSession.UserId)
+                    {
+                        <button class="btn btn-link text-danger p-0" @onclick="() => HandleDelete(post.Id)">
+                            <i class="bi bi-trash fs-5"></i>
+                        </button>
+                    }
+                </div>
+
+                @*Post Görseli  *@
+                @if (!string.IsNullOrEmpty(post.ImageUrl))
+                {
+                    <img src="/uploads/@post.ImageUrl" class="card-img-top img-fluid" alt="Post Image">
+                }
+
+                @*Post İçeriği *@
+                <div class="card-body">
+                    <p class="card-text">@post.Content</p>
+                </div>
+
+                <div class="card-footer bg-white border-0 pt-0">
+                    <hr class="mt-0 opacity-25" />
+
+                    @*BUTONLAR*@
+                    <div class="d-flex align-items-center gap-4 mb-2 px-2">
+                        @*Beğen Butonu *@
+                        <div @onclick="() => HandleLike(post.Id)" style="cursor:pointer;" class="d-flex align-items-center gap-1">
+                            <i class="bi @(post.Likes.Any(l => l.UserId == UserSession.UserId) ? "bi-heart-fill text-danger" : "bi-heart") fs-5"></i>
+                            <span class="fw-bold small">@post.Likes.Count</span>
+                        </div>
+
+                        @*Yorum Sayısı*@
+                        <div class="d-flex align-items-center gap-1 text-secondary">
+                            <i class="bi bi-chat fs-5"></i>
+                            <span class="fw-bold small">@post.Comments.Count</span>
+                        </div>
+                    </div>
+
+                    @*YORUMLAR *@
+                    @if (post.Comments != null && post.Comments.Any())
+                    {
+                        <div class="p-2 rounded mb-2" style="background-color: #f8f9fa;">
+                            @foreach (var comment in post.Comments)
+                            {
+                                <div class="mb-1" style="font-size: 0.85rem;">
+                                    <span class="fw-bold">@comment.User?.Username</span>
+                                    <span class="ms-1">@comment.Content</span>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @*GİRİŞ KUTUSU *@
+                    <div class="d-flex align-items-center bg-light rounded-pill px-3 py-1">
+                        <input type="text" class="form-control border-0 bg-transparent shadow-none"
+                               style="font-size: 0.85rem;"
+                               placeholder="Yorum ekle..."
+                               @bind="commentInputs[post.Id]"
+                               @bind:event="oninput"
+                               @onkeypress="@(async e => { if (e.Key == "Enter") await HandleComment(post.Id); })" />
+
+                        @if (!string.IsNullOrWhiteSpace(commentInputs[post.Id]))
+                        {
+                            <button class="btn btn-link text-primary fw-bold text-decoration-none btn-sm p-0"
+                                    @onclick="() => HandleComment(post.Id)">
+                                Paylaş
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+
+    .upload-btn-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+    }
+
+        .upload-btn-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+    .post-card img {
+        max-height: 500px;
+        object-fit: cover;
+    }
+</style>
+
+
+
+@code {
+    private List<Post>? posts;
+    private string newPostContent = "";
+    private string? selectedFileName;
+    private IBrowserFile? selectedFile; // Byte dizisi yerine sadece dosya referansını tutalım
+    private bool isUploading = false;
+    //Sayfada 10 tane post varsa commentInputs sözlüğü içinde 10 tane ayrı kayıt tutsun böylece her postun yorum kutusu ayrı olur
+    private Dictionary<int, string> commentInputs = new Dictionary<int, string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsLoggedIn) { Navigation.NavigateTo("/"); return; }
+        await LoadPosts();
+    }
+
+    private async Task LoadPosts()
+    {
+        //Çift çağırmayı tek satıra indirdik
+        posts = await PostService.GetAllPostsAsync();
+
+        //Her post için sözlükte bir anahtar açıyoruz
+        if (posts != null)
+        {
+            foreach (var post in posts)
+            {
+                //Eğer sözlükte bu id yoksa, boş bir string ekle
+                if (!commentInputs.ContainsKey(post.Id))
+                {
+                    commentInputs[post.Id] = "";
+                }
+            }
+        }
+    }
+
+    private async Task HandleLike(int postId)
+    {
+        bool result = await PostService.ToggleLikeAsync(postId, UserSession.UserId);
+        if (result)
+        {
+            await LoadPosts();
+        }
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        selectedFileName = e.File.Name;
+    }
+
+    private async Task SubmitPost()
+    {
+        if (string.IsNullOrWhiteSpace(newPostContent) && selectedFile == null) return;
+
+        isUploading = true;
+        try
+        {
+            byte[]? bytes = null;
+            if (selectedFile != null)
+            {
+                
+                using var ms = new MemoryStream();
+                await selectedFile.OpenReadStream(15 * 1024 * 1024).CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            var newPost = new Post
+            {
+                Content = newPostContent,
+                UserId = UserSession.UserId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var result = await PostService.CreatePostAsync(newPost, selectedFileName, bytes);
+            if (result)
+            {
+                newPostContent = "";
+                selectedFileName = null;
+                selectedFile = null; // İş bitince temizle
+                await LoadPosts();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Hata: " + ex.Message);
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    // Silme metodumuz: Kullanıcıya onay sorar ve servisi çağırır
+    private async Task HandleDelete(int postId)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Bu gönderiyi silmek istediğinize emin misiniz?");
+        if (confirmed)
+        {
+            bool result = await PostService.DeletePostAsync(postId, UserSession.UserId);
+            if (result)
+            {
+                await LoadPosts(); // Post listesini güncelle
+            }
+        }
+    }
+
+    private async Task HandleComment(int postId)
+    {
+        if (commentInputs.TryGetValue(postId, out var content) && !string.IsNullOrWhiteSpace(content))
+        //out var eğer idyi bulursan içindeki yazıyı al ve content değişkenine ata bunun yerine contains olabilirdi
+        {
+
+            bool result = await PostService.AddCommentAsync(postId, UserSession.UserId, content);
+
+            if (result)
+            {
+                commentInputs[postId] = "";//yorum gidice kutuyu boşalt
+                await LoadPosts();//listeyi yenile
+            }
+        }
+    }
+}

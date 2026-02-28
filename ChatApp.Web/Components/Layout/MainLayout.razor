@@ -1,23 +1,52 @@
 ﻿@inherits LayoutComponentBase
+@using ChatApp.Web.Services
+@inject UserSession UserSession
+@inject NavigationManager Navigation 
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@* Artık yandaki menü kısıtlamalarından kurtulmak için div class'ını değiştirdik *@
+<div class="main-wrapper" style="background-color: #fafafa; min-height: 100vh;">
+    @if (UserSession.IsLoggedIn)
+    {
+        @*PROFESYONEL ÜST NAVBAR*@
+        <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top mb-4 shadow-sm">
+            <div class="container" style="max-width: 600px;">
+                <a class="navbar-brand fw-bold text-primary" href="/feed">SocialApp</a>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+                <div class="d-flex gap-4 align-items-center">
+                    @* Akış *@
+                    <a href="/feed" class="text-dark"><i class="bi bi-house-door fs-4"></i></a>
 
-        <article class="content px-4">
-            @Body
-        </article>
+                    @* Arama *@
+                    <a href="/search" class="text-dark"><i class="bi bi-search fs-4"></i></a>
+
+                    @* Mesajlar *@
+                    <a href="/messages" class="text-dark"><i class="bi bi-chat-dots fs-4"></i></a>
+
+                    @* Profilim *@
+                    <a href="/profile/@UserSession.UserId" class="text-dark"><i class="bi bi-person-circle fs-4"></i></a>
+
+                    @* Çıkış *@
+                    <button class="btn btn-link text-danger p-0 ms-2" @onclick="Logout">
+                        <i class="bi bi-box-arrow-right fs-4"></i>
+                    </button>
+                </div>
+            </div>
+        </nav>
+    }
+
+    @* Sayfa içeriklerinin Navbar ile aynı hizada ve ortalı durması için container*@
+    <main class="container" style="max-width: 600px;">
+        @* diğer sayfalar buraya gelsin*@  
+        @Body
     </main>
 </div>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+@code {
+    private void Logout()
+    {
+        @* Seansı temizleyip giriş sayfasına yolluyoruz *@
+        UserSession.Username = null;
+        UserSession.UserId = 0;
+        Navigation.NavigateTo("/");
+    }
+}

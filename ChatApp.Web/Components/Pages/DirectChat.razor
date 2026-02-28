@@ -1,0 +1,122 @@
+﻿@page "/directchat/{ReceiverId:int}" 
+@*/directchat/5 yazdığında, Razor otomatik olarak o 5 sayısını alıp aşağıdaki ReceiverId değişkenine atar.*@
+@using ChatApp.Web.Services
+@using ChatApp.Shared
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Components.Web
+@inject ChatService ChatService
+@inject PostService PostService
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card shadow-sm border-0">
+        @* Kiminle konuştuğummuz *@
+        <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+            <a href="/feed" class="text-dark me-3"><i class="bi bi-arrow-left fs-4"></i></a>
+            @if (receiver != null)
+            {
+                <div class="rounded-circle bg-primary text-white d-flex justify-content-center align-items-center me-2"
+                     style="width: 40px; height: 40px; font-weight: bold;">
+                     @* eğer kullanıcı fotoğrafı yoksa isminin ilk harfini alıp büyük harfe çevirip yuvarklak içinde bas*@
+                    @receiver.Username[0].ToString().ToUpper()
+                </div>
+                <h6 class="mb-0 fw-bold">@receiver.Username</h6>
+            }
+        </div>
+
+        @*mesaj alanı *@
+        <div class="card-body bg-light overflow-auto" style="height: 500px;" id="chatContainer">
+            @foreach (var msg in messages)
+            {
+                <div class="d-flex mb-3 @(msg.SenderId == UserSession.UserId ? "justify-content-end" : "justify-content-start")">
+                    <div class="p-2 px-3 shadow-sm @(msg.SenderId == UserSession.UserId ? "bg-primary text-white" : "bg-white text-dark")"
+                         style="max-width: 80%; border-radius: 18px;">
+                        @msg.Content
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* giriş alanı*@
+        <div class="card-footer bg-white border-0 p-3">
+            <div class="input-group">
+                <input @bind="newMessage" @bind:event="oninput"
+                       class="form-control rounded-pill bg-light border-0 px-3"
+                       placeholder="Mesaj yaz..." @onkeyup="HandleKeyUp" />
+
+                @if (!string.IsNullOrWhiteSpace(newMessage))
+                {
+					//gönder butonu sadece mesaj yazıldığında aktif olsun
+                    <button class="btn btn-link text-primary fw-bold text-decoration-none" @onclick="SendMessage">Gönder</button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int ReceiverId { get; set; } //bu attribute bu değişken dışarıdan yani url gelicek demek
+    private User? receiver;
+    private List<DirectMessage> messages = new();
+    private string newMessage = "";
+    private HubConnection? hubConnection;
+
+    //sayfa idsi her değiştiğinde veya ilk açıldığında çalışır
+    protected override async Task OnParametersSetAsync()
+    {
+        //karşıdaki kullanıcının bilgilerini al 
+        receiver = await PostService.GetUserProfileAsync(ReceiverId);
+
+        //veritabanından geçmiş mesajları yükle
+        messages = await ChatService.GetDirectMessagesAsync(UserSession.UserId, ReceiverId);
+    }
+
+    //sayfa render edildikten sonra SignalRı bağla
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/chathub"))
+                .Build();
+
+            //mesaj geldiğinde listeye ekle
+            hubConnection.On<int, string>("ReceivePrivateMessage", (senderId, message) =>
+            {
+                messages.Add(new DirectMessage { SenderId = senderId, Content = message });
+                InvokeAsync(StateHasChanged);
+            });
+
+            await hubConnection.StartAsync();
+
+            //hubdaki o özel odaya gir
+            await hubConnection.SendAsync("JoinPrivateChat", UserSession.UserId, ReceiverId);
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (hubConnection != null && !string.IsNullOrWhiteSpace(newMessage))
+        {
+            //Veritabanına kaydet 
+            var dm = new DirectMessage
+            {
+                SenderId = UserSession.UserId,
+                ReceiverId = ReceiverId,
+                Content = newMessage
+            };
+            await ChatService.SaveMessageAsync(dm);
+
+            //SignalR ile canlı gönder
+            await hubConnection.SendAsync("SendPrivateMessage", UserSession.UserId, ReceiverId, newMessage);
+
+            newMessage = "";
+        }
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e) { if (e.Key == "Enter") await SendMessage(); }
+    public async ValueTask DisposeAsync() { if (hubConnection != null) await hubConnection.DisposeAsync(); }
+}

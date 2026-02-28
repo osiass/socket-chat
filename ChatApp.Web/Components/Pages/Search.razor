@@ -1,0 +1,83 @@
+﻿@page "/search"
+@using ChatApp.Shared
+@using ChatApp.Web.Services
+@inject UserService UserService
+@inject UserSession UserSession
+@inject NavigationManager Navigation
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-3">
+            @*ARAMA KUTUSU*@
+            <div class="input-group bg-light rounded-pill px-3 py-1">
+                <span class="input-group-text bg-transparent border-0 text-muted">
+                    <i class="bi bi-search"></i>
+                </span>
+                @*oninput kullanarak kullanıcı her harfe bastığında searcterm güncelleniyor onkeypressle araya basmadan sonuçlar dönüyor*@
+                <input type="text" class="form-control border-0 bg-transparent shadow-none"
+                       placeholder="Kullanıcı ara..."
+                       @bind="searchTerm"
+                       @bind:event="oninput"
+                       @onkeypress="HandleKeyPress" />
+            </div>
+        </div>
+    </div>
+
+    @*SONUÇ LİSTESİ*@
+    <div class="list-group shadow-sm border-0 rounded-3 overflow-hidden">
+        @if (searchResults == null)
+        {
+            <p class="text-center text-muted mt-5">Aramak için bir şeyler yazın...</p>
+        }
+        else if (searchResults.Count == 0)
+        {
+            <div class="text-center p-5 bg-white">
+                <i class="bi bi-person-x fs-1 text-muted"></i>
+                <p class="mt-2 mb-0 text-muted">Kullanıcı bulunamadı.</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var user in searchResults)
+            {
+                <a href="/profile/@user.Id" class="list-group-item list-group-item-action border-0 py-3 d-flex align-items-center bg-white">
+                    @*KULLANICI PROFİL*@
+                    <img src="@(string.IsNullOrEmpty(user.ProfilePictureUrl) ? "https://cdn-icons-png.flaticon.com/512/149/149071.png" : $"/profile-images/{user.ProfilePictureUrl}")"
+                         class="rounded-circle border" style="width: 45px; height: 45px; object-fit: cover;" />
+
+                    <div class="ms-3">
+                        <h6 class="mb-0 fw-bold">@user.Username</h6>
+                        <small class="text-muted">Profilini görüntüle</small>
+                    </div>
+
+                    <i class="bi bi-chevron-right ms-auto text-muted"></i>
+                </a>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private string searchTerm = "";
+    private List<User>? searchResults;
+
+    protected override void OnInitialized()
+    {
+        if (!UserSession.IsLoggedIn) Navigation.NavigateTo("/");
+    }
+
+    //Kullanıcı her harf yazdığında otomatik tetiklenir 
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            //eğer kullanıcı kutudaki her şeyi silerse null yaparak ekranı ilk haline döndürür
+            searchResults = null;
+            return;
+        }
+
+        // Backend'den kullanıcıları ara
+        searchResults = await UserService.SearchUsersAsync(searchTerm, UserSession.UserId);
+    }
+}

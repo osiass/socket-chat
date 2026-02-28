@@ -6,25 +6,66 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject NavigationManager Navigation
-@implements IAsyncDisposable
 @inject UserSession UserSession
+@*sayfa kapandığında bağlantının düzgünce kapanması için*@
+@implements IAsyncDisposable
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
-<PageTitle>Sohbet Odası</PageTitle>
 
-<div class="container border p-3 rounded shadow-sm" style="max-width: 600px; height: 500px; display: flex; flex-direction: column;">
-    <div class="flex-grow-1 overflow-auto mb-3" id="messageList">
-        @foreach (var msg in messages)
-        {
-            <div class="mb-2">
-                <strong>@msg.User:</strong> @msg.Text
-                <hr class="m-0" />
+<PageTitle>Global Sohbet - SocialApp</PageTitle>
+
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card shadow-sm border-0">
+        @* Üst Başlık *@
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 d-flex align-items-center">
+                <i class="bi bi-chat-dots-fill me-2"></i> Global Sohbet
+            </h5>
+        </div>
+
+        @* Mesaj Alanı *@
+        <div class="card-body bg-light overflow-auto" style="height: 500px;" id="messageContainer">
+            @if (messages == null || !messages.Any())
+            {
+                <div class="text-center text-muted mt-5">
+                    <p>Henüz mesaj yok. İlk mesajı sen yaz!</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in messages)
+                {
+                    @* Kendi mesajlarımız sağda, başkalarınınki solda *@
+                    <div class="d-flex mb-3 @(msg.User == UserSession.Username ? "justify-content-end" : "justify-content-start")">
+                        <div class="p-2 px-3 rounded shadow-sm @(msg.User == UserSession.Username ? "bg-primary text-white" : "bg-white text-dark")"
+                             style="max-width: 80%; border-radius: 15px !important;">
+                            @if (msg.User != UserSession.Username)
+                            {
+                                <small class="fw-bold d-block mb-1 text-primary">@@@msg.User</small>
+                            }
+                            <span style="font-size: 0.95rem;">@msg.Text</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @* Giriş Alanı *@
+        <div class="card-footer bg-white border-0 p-3">
+            <div class="input-group">
+                <input @bind="userInput"
+                       @bind:event="oninput"
+                       class="form-control rounded-pill bg-light border-0 px-3"
+                       placeholder="Mesajınızı yazın..."
+                       @onkeyup="HandleKeyUp" />
+
+                <button class="btn btn-primary rounded-circle ms-2"
+                        @onclick="Send"
+                        disabled="@(!IsConnected || string.IsNullOrWhiteSpace(userInput))"
+                        style="width: 45px; height: 45px;">
+                    <i class="bi bi-send-fill"></i>
+                </button>
             </div>
-        }
-    </div>
-
-    <div class="input-group">
-        <input @bind="userInput" class="form-control" placeholder="Mesajınız..." @onkeyup="HandleKeyUp" />
-        <button class="btn btn-primary" @onclick="Send" disabled="@(!IsConnected)">Gönder</button>
+        </div>
     </div>
 </div>
 
@@ -36,60 +77,45 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            //  Veritabanından eski mesajları çek
-            var oldMessages = await DbContext.Messages
-                .Include(m => m.User) 
-                .OrderByDescending(m => m.SentAt)
-                .Take(50) // Son 50 mesaj
-                .ToListAsync();
-
-            // ters çevirerek ekle
-            foreach (var m in oldMessages.OrderBy(m => m.SentAt))
-            {
-                messages.Add(new ChatMessage { User = m.User?.Username, Text = m.Content });
-            }
-
-            StateHasChanged(); // Ekranda göster
-
-            
-        }
-        if (firstRender)//sadece ilk renderda çalış
+        if(firstRender)
         {
             if (!UserSession.IsLoggedIn)
             {
                 Navigation.NavigateTo("/");
                 return;
             }
+		}
+        //  Veritabanından eski mesajları çek
+        var oldMessages = await DbContext.Messages
+            .Include(m => m.User)
+            .OrderByDescending(m => m.SentAt)
+            .Take(50) // Son 50 mesaj
+            .ToListAsync();
 
+        messages = oldMessages.OrderBy(m => m.SentAt)
+          .Select(m => new ChatMessage { User = m.User?.Username, Text = m.Content })
+          .ToList();
+         
+        hubConnection = new HubConnectionBuilder()
+           .WithUrl(Navigation.ToAbsoluteUri("/chathub"))//tcpdeki ip porttan sonra gelen adres gibi
+           .WithAutomaticReconnect()
+           .Build();
 
+        // serverdan mesaj geldiğinde tetiklenecek olay
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+         {
+             messages.Add(new ChatMessage { User = user, Text = message });
+             InvokeAsync(StateHasChanged);// Sayfayı yenile
+         });
+              
+        // bağlantıyı başlat
+        try { await hubConnection.StartAsync(); }
+        catch (Exception ex) { Console.WriteLine($"Bağlantı hatası: {ex.Message}"); }
 
-            hubConnection = new HubConnectionBuilder()
-                .WithUrl(Navigation.ToAbsoluteUri("/chathub"))//tcpdeki ip porttan sonra gelen adres gibi
-                .WithAutomaticReconnect()
-                .Build();
-
-            // serverdan mesaj geldiğinde tetiklenecek olay
-            hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
-            {
-                messages.Add(new ChatMessage { User = user, Text = message });
-                InvokeAsync(StateHasChanged); // Sayfayı yenile 
-            });
-
-            // bağlantıyı başlat
-            try
-            {
-                await hubConnection.StartAsync();
-                StateHasChanged(); // butonun aktifleşmesi için ekranı bir kez daha tazele
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Bağlantı hatası: {ex.Message}");
-            }
+        StateHasChanged();
 
         }
-    }
+   
 
     private async Task Send()
     {
